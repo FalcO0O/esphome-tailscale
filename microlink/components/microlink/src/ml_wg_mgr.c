@@ -490,6 +490,11 @@ static esp_err_t wg_init_interface(microlink_t *ml) {
     wireguardif_set_derp_output(netif, wg_derp_output_cb, ml);
     wireguardif_set_udp_output(netif, wg_udp_output_cb, ml);
 
+    /* FORCE-DERP: Disable direct UDP transmission and route all WireGuard TX via DERP */
+    wireguardif_force_derp_output(netif, true);
+    ESP_LOGW(TAG, "FORCE-DERP: All WireGuard TX forced through DERP relay");
+
+
     /* On cellular AT socket bridge, force all WG output through DERP relay.
      * AT sockets are TCP-only, so direct UDP is impossible.
      * PPP mode has real lwIP sockets with UDP, so allow direct connections. */
@@ -1568,12 +1573,8 @@ static void process_wg_packet(microlink_t *ml, const ml_rx_packet_t *pkt) {
 
     /* Build source address */
     ip_addr_t addr;
-    if (pkt->via_derp) {
-        ip_addr_set_any(false, &addr);
-    } else {
-        IP_SET_TYPE_VAL(addr, IPADDR_TYPE_V4);
-        ip4_addr_set_u32(ip_2_ip4(&addr), htonl(pkt->src_ip));
-    }
+    /* FORCE-DERP: Always pass INADDR_ANY so wireguard-lwip does not update peer->ip with the local LAN address */
+    ip_addr_set_any(false, &addr);
 
     /* Call WG RX handler — pbuf is PBUF_RAM so data survives async delivery */
     wireguardif_network_rx(device, NULL, p, &addr, pkt->src_port);
